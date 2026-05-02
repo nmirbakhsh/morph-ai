@@ -1,0 +1,25 @@
+# Morph AI MCP server config.
+# Each entry defines a Model Context Protocol server to bridge.
+# transport: "stdio" spawns a subprocess; "sse" / "http" connect over the network.
+
+mcp_servers:
+  # Wikipedia MCP is a Python package; we run it with uvx so it auto-installs
+  # into an isolated env on first launch.
+  - name: wikipedia
+    transport: stdio
+    command: uvx
+    args: ["--from", "wikipedia-mcp-server", "wikipedia-mcp"]
+    description: "Search and retrieve Wikipedia articles"
+    enabled: true
+
+  # Add more MCP servers below. Examples:
+  #
+  # - name: filesystem
+  #   transport: stdio
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+  #
+  # - name: postgres
+  #   transport: stdio
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/db"]

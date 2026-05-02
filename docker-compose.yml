@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    container_name: morph-backend
+    ports:
+      - "8000:8000"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite-preview}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/morph.db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    volumes:
+      - ./data:/data
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: morph-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Vite's dev-server proxy runs inside this container, so it must reach
+      # the backend by its docker-compose service name, not via localhost.
+      VITE_API_BASE: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
