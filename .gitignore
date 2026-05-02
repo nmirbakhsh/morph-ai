@@ -1,13 +1,15 @@
 .env
-data/*.db
-data/*.db-journal
+**/data/*.db
+**/data/*.db-journal
 backend/__pycache__/
 backend/**/__pycache__/
 backend/venv/
 backend/.venv/
+backend/data/
 frontend/node_modules/
 frontend/dist/
 .DS_Store
+._*
 *.pyc
 .venv/
 *.swp
