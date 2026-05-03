@@ -84,6 +84,9 @@ LAYOUT_SCHEMA_TEXT = """
 {
   "theme": "violet | emerald | coral | cerulean | amber | indigo | magenta | warm | neutral",
   "accent_color": "#hex (vibrant, fits theme)",
+  "bg_from": "#hex — top-left of the panel gradient",
+  "bg_via":  "#hex — optional middle stop (omit for a 2-stop gradient)",
+  "bg_to":   "#hex — bottom-right of the panel gradient",
   "icon": "single emoji",
   "eyebrow": "small uppercase label, ~3-5 words",
   "headline": "the room's title — 4-7 words MAX, no period",
@@ -186,6 +189,21 @@ Hard rules:
   does NOT repeat any word from headline. NEVER echo the headline.
 - body: <= 130 chars, ONE sentence, optional.
 - Pick a vivid theme + accent_color that matches the topic emotionally.
+
+Background gradient (REQUIRED — do not omit bg_from/bg_to):
+- Pick bg_from, bg_to (and optionally bg_via) so the panel background reads as
+  a unique mood for THIS topic. Subsequent rooms must look visually distinct
+  from neighbors so navigating feels like stepping into a new place.
+- Use vibrant but readable colors — they must hold white text at high contrast.
+  Generally: deep / saturated / not pastel. Lightness ~ 12-32%.
+- Different topic = different palette. A history room is NOT the same colour
+  as a finance room. Two consecutive rooms should not share dominant hue.
+- Examples (illustrative, do NOT copy):
+    space    → bg_from "#0a0426" bg_to "#1c0d4d"
+    forest   → bg_from "#062a1a" bg_to "#0f4d2c"
+    sunset   → bg_from "#3a0a14" bg_to "#7a2410"
+    arctic   → bg_from "#08263d" bg_to "#0f4863"
+    earth    → bg_from "#241608" bg_to "#5a3210"
 
 Component selection guidance:
 - If image URLs are provided, include EXACTLY ONE image component using one

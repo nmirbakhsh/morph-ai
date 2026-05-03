@@ -119,11 +119,11 @@ button { font-family: inherit; }
   min-height: 100%;
   display: flex; flex-direction: column;
   align-items: flex-start; justify-content: center;
-  /* All four sides reserve at minimum the rail thickness + breathing room. */
-  padding: calc(var(--topbar-h) + var(--rail-thick) + 24px)
-           calc(var(--rail-thick) + 28px)
-           calc(var(--rail-thick) + 24px)
-           calc(var(--rail-thick) + 28px);
+  /* Only need to clear the topbar, the bottom tab, and a small side gutter. */
+  padding: calc(var(--topbar-h) + 56px)
+           48px
+           56px
+           48px;
   max-width: 1100px;
   margin: 0 auto;
   gap: 0;
@@ -234,127 +234,101 @@ button { font-family: inherit; }
   font-style: italic;
 }
 
-/* ── Direction rails (glassy edge rectangles) ─────────────────────────── */
+/* ── Direction tabs (compact midpoint pills) ─────────────────────────── */
+/* Match the v3.html design: small labels flush to the screen edge at the
+   midpoint of each side. No icons, no sublabels. Pure label tabs. */
 :root {
-  --rail-thick: 76px;
-  --rail-thick-mobile: 48px;
-  --topbar-h: 48px;
+  --topbar-h: 44px;
+  --tab-radius: 8px;
 }
 .signpost {
   position: fixed; z-index: 850;
   cursor: pointer;
   user-select: none;
   display: flex; align-items: center; justify-content: center;
-  /* Tinted glass — needs enough alpha to read as a rectangle on light bg too. */
-  background: rgba(10,10,20,0.42);
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.12);
   color: #fff;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
   overflow: hidden;
-  /* Force a stacking context so backdrop-filter renders on iOS Safari. */
-  transform: translateZ(0);
 }
 .signpost:hover,
-.signpost:active { background: rgba(20,20,40,0.55); }
+.signpost:active {
+  background: rgba(255,255,255,0.16);
+  border-color: rgba(255,255,255,0.22);
+}
+.signpost:hover .signpost-label { color: rgba(255,255,255,0.95); }
 
-.signpost.up,
+/* Top — drops down from below the topbar */
+.signpost.up {
+  top: var(--topbar-h); left: 50%;
+  transform: translateX(-50%);
+  border-top: none;
+  border-radius: 0 0 var(--tab-radius) var(--tab-radius);
+  min-width: 90px;
+  padding: 5px 14px;
+}
+/* Bottom — rises up from the bottom edge */
 .signpost.down {
-  left: 0; right: 0;
-  height: var(--rail-thick);
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  border-bottom: none;
+  border-radius: var(--tab-radius) var(--tab-radius) 0 0;
+  min-width: 90px;
+  padding: 5px 14px;
 }
-/* Up rail begins below the topbar so they never overlap. */
-.signpost.up    { top: var(--topbar-h); border-top: none; border-left: none; border-right: none; }
-.signpost.down  { bottom: 0; border-bottom: none; border-left: none; border-right: none; }
-
-.signpost.left,
+/* Left — vertical text reading bottom-to-top */
+.signpost.left {
+  left: 0; top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  writing-mode: vertical-rl;
+  border-left: none;
+  border-radius: 0 var(--tab-radius) var(--tab-radius) 0;
+  min-height: 90px;
+  padding: 14px 5px;
+}
+/* Right — vertical text reading top-to-bottom */
 .signpost.right {
-  top: var(--topbar-h); bottom: 0;
-  width: var(--rail-thick);
+  right: 0; top: 50%;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  border-right: none;
+  border-radius: var(--tab-radius) 0 0 var(--tab-radius);
+  min-height: 90px;
+  padding: 14px 5px;
 }
-.signpost.left  { left: 0; border-left: none; border-top: none; border-bottom: none; }
-.signpost.right { right: 0; border-right: none; border-top: none; border-bottom: none; }
 
 .signpost-body {
   display: flex; align-items: center; justify-content: center;
-  gap: 12px;
-  padding: 0 18px;
+  gap: 0; padding: 0;
   min-width: 0;
-  width: 100%; height: 100%;
-}
-/* Vertical orientation for left/right rails */
-.signpost.left  .signpost-body,
-.signpost.right .signpost-body {
-  flex-direction: column;
-  gap: 8px;
-  padding: 18px 0;
 }
 
-.signpost-icon {
-  flex: 0 0 auto;
-  width: 28px; height: 28px; border-radius: 50%;
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.18);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-}
-.signpost.is-back .signpost-icon {
-  background: rgba(0,0,0,0.32);
-  border-color: rgba(255,255,255,0.32);
-}
-.signpost.is-back .signpost-label { opacity: 0.85; }
-.signpost.is-continuation .signpost-icon {
-  background: rgba(255,255,255,0.2);
-  border-color: rgba(255,255,255,0.4);
-  box-shadow: 0 0 18px rgba(255,255,255,0.18);
-}
+/* Hide icon, arrow, sublabel — design uses label-only tabs. */
+.signpost-icon, .signpost-arrow, .signpost-sub { display: none; }
 
-.signpost-text {
-  display: flex; flex-direction: column; min-width: 0;
-  max-width: 240px;
-}
-.signpost.left  .signpost-text,
-.signpost.right .signpost-text {
-  align-items: center;
-  text-align: center;
-  writing-mode: horizontal-tb;
-}
-
-.signpost-arrow {
-  font-family: var(--mono); font-size: 12px;
-  color: rgba(255,255,255,0.55);
-  flex: 0 0 auto;
-}
 .signpost-label {
-  font-size: 12px; font-weight: 700; color: #fff;
-  letter-spacing: -0.01em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 11px; font-weight: 600;
+  color: rgba(255,255,255,0.7);
+  font-family: var(--sans);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
-.signpost-sub {
-  font-size: 10px; color: rgba(255,255,255,0.45);
-  font-family: var(--mono); letter-spacing: 0.03em;
-  line-height: 1.35;
-  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: nowrap; text-overflow: ellipsis;
+
+/* Visual differentiation for back / continue */
+.signpost.is-back {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
 }
-/* Vertical rails: stack label/sub vertically and clamp width */
-.signpost.left  .signpost-label,
-.signpost.right .signpost-label {
-  font-size: 11px;
-  white-space: normal;
-  text-align: center;
-  max-width: 60px;
+.signpost.is-back .signpost-label { color: rgba(255,255,255,0.5); }
+.signpost.is-continuation {
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.28);
 }
-.signpost.left  .signpost-sub,
-.signpost.right .signpost-sub {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  white-space: normal;
-  font-size: 9px;
-  max-width: 60px;
-  line-height: 1.3;
-}
+.signpost.is-continuation .signpost-label { color: rgba(255,255,255,0.95); }
+.signpost-text { display: contents; }
 
 /* ── Cinematic terminal (overlay during navigate) ───────────────────── */
 .terminal-overlay {
@@ -554,10 +528,7 @@ button { font-family: inherit; }
 
 /* ── Mobile responsive ──────────────────────────────────────── */
 @media (max-width: 720px) {
-  :root {
-    --rail-thick: var(--rail-thick-mobile);
-    --topbar-h: 44px;
-  }
+  :root { --topbar-h: 40px; }
 
   .topbar { padding: 0 12px; }
   .topbar .panel-label { display: none; }
@@ -565,11 +536,7 @@ button { font-family: inherit; }
   .logo-text { font-size: 14px; }
 
   .panel-inner {
-    /* Slightly less side breathing room than desktop, but still beyond rail. */
-    padding: calc(var(--topbar-h) + var(--rail-thick) + 14px)
-             calc(var(--rail-thick) + 14px)
-             calc(var(--rail-thick) + 14px)
-             calc(var(--rail-thick) + 14px);
+    padding: calc(var(--topbar-h) + 44px) 22px 44px 22px;
     align-items: stretch;
   }
 
@@ -588,21 +555,12 @@ button { font-family: inherit; }
   .image-block img { max-height: 200px; }
   .metric-block-value { font-size: 32px; }
 
-  /* Tighten side rails: just the icon + tiny label, sublabel hidden. */
-  .signpost.left .signpost-text,
-  .signpost.right .signpost-text { max-width: 40px; }
-  .signpost.left .signpost-label,
-  .signpost.right .signpost-label { font-size: 10px; max-width: 40px; }
-  .signpost.left .signpost-sub,
-  .signpost.right .signpost-sub,
-  .signpost.up .signpost-sub,
-  .signpost.down .signpost-sub { display: none; }
-  .signpost-icon { width: 24px; height: 24px; font-size: 12px; }
-  .signpost.up .signpost-body,
-  .signpost.down .signpost-body { padding: 0 12px; gap: 8px; }
+  .signpost.up, .signpost.down { min-width: 76px; padding: 4px 12px; }
+  .signpost.left, .signpost.right { min-height: 76px; padding: 12px 4px; }
+  .signpost-label { font-size: 10px; }
 
   .chat-panel {
-    bottom: calc(var(--rail-thick) + 10px);
+    bottom: 56px;
     right: 10px; left: 10px; width: auto;
     max-height: 60vh;
   }
@@ -610,16 +568,8 @@ button { font-family: inherit; }
   .coord-readout { display: none; }
 }
 
-/* Very narrow (notches) — even tighter */
+/* Very narrow — even tighter side rails */
 @media (max-width: 380px) {
-  :root { --rail-thick: 40px; }
-  .panel-inner {
-    padding: calc(var(--topbar-h) + var(--rail-thick) + 10px)
-             calc(var(--rail-thick) + 10px)
-             calc(var(--rail-thick) + 10px)
-             calc(var(--rail-thick) + 10px);
-  }
+  .panel-inner { padding: calc(var(--topbar-h) + 40px) 14px 40px 14px; }
   .stat-grid { grid-template-columns: 1fr; }
-  .signpost.left .signpost-text,
-  .signpost.right .signpost-text { display: none; }  /* icon only */
 }

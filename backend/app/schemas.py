@@ -109,8 +109,13 @@ class AdjacentIntents(BaseModel):
 # ─── Full node layout (Prompt B output) ────────────────────────────────────
 
 class NodeLayout(BaseModel):
-    theme: Theme = "violet"
-    accent_color: str = "#a78bfa"   # hex; used for headline emphasis
+    theme: Theme = "violet"          # legacy fallback when bg_* aren't set
+    accent_color: str = "#a78bfa"    # hex; used for headline emphasis
+    # LLM-picked gradient for the panel background. Must emotionally fit the
+    # topic. Kept optional so older nodes still render via theme fallback.
+    bg_from: Optional[str] = None
+    bg_via: Optional[str] = None
+    bg_to: Optional[str] = None
     icon: str = "✦"                  # large emoji for the room
     eyebrow: str
     headline: str

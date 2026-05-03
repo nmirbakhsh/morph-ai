@@ -17,12 +17,19 @@ export function NodeCard({ node, isCurrent }: Props) {
   const { layout } = node;
   const accent = layout.accent_color || "#a78bfa";
 
+  // Prefer LLM-picked gradient; fall back to legacy theme class.
+  const stops = [layout.bg_from, layout.bg_via, layout.bg_to].filter(Boolean);
+  const gradient = stops.length >= 2
+    ? `linear-gradient(135deg, ${stops.join(", ")})`
+    : undefined;
+
   return (
     <div
-      className={`panel theme-${layout.theme || "violet"}`}
+      className={`panel ${gradient ? "" : `theme-${layout.theme || "violet"}`}`}
       style={{
         left: `${node.coord_x * 100}vw`,
         top: `${node.coord_y * 100}vh`,
+        ...(gradient ? { background: gradient } : {}),
       }}
       data-node-id={node.node_id}
     >

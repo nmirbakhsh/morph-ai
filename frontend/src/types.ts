@@ -78,6 +78,9 @@ export interface AdjacentIntents {
 export interface NodeLayout {
   theme: Theme;
   accent_color: string;
+  bg_from?: string | null;
+  bg_via?: string | null;
+  bg_to?: string | null;
   icon: string;
   eyebrow: string;
   headline: string;
