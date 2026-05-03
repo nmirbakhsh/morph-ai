@@ -4,19 +4,11 @@ import type {
 
 const BASE = "/api";
 
-function getVizPreferences(): string | null {
-  return document.cookie.replace(/(?:(?:^|.*;\s*)vizPrefs\s*=\s*([^;]*).*$)|^.*$/, "") || null;
-}
-
-function setVizPreferences(prefs: string) {
-  document.cookie = "vizPrefs=" + prefs + "; path=/; max-age=31536000";
-}
-
+/** Viewport hint — used by the backend to tune content density per device. */
 function viewport() {
   return {
     viewport_w: typeof window !== "undefined" ? window.innerWidth : null,
     viewport_h: typeof window !== "undefined" ? window.innerHeight : null,
-    viz_prefs: getVizPreferences(),
   };
 }
 
@@ -25,10 +17,8 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
-  if (!res.ok) throw new Error(res.status + " " + await res.text());
-  const json = await res.json();
-  if (json.viz_prefs) setVizPreferences(json.viz_prefs);
-  return json;
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
 }
 
 export const api = {
@@ -58,9 +48,9 @@ export const api = {
     }),
 
   graph: (sessionId: string) =>
-    jsonFetch<GraphResponse>("/graph/" + sessionId),
+    jsonFetch<GraphResponse>(`/graph/${sessionId}`),
 
   /** Build an EventSource URL for the SSE log stream of an in-flight navigate. */
   streamUrl: (parentId: string, direction: Direction) =>
-    BASE + "/stream?parent_node_id=" + encodeURIComponent(parentId) + "&direction=" + direction,
+    `${BASE}/stream?parent_node_id=${encodeURIComponent(parentId)}&direction=${direction}`,
 };

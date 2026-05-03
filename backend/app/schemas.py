@@ -8,7 +8,13 @@ Two LLM stages produce typed JSON:
 from __future__ import annotations
 
 from typing import Annotated, List, Literal, Optional, Union
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+
+class _StrictBase(BaseModel):
+    """Reject unknown fields. Used on every request body so a poisoned client
+    that sends e.g. `viz_prefs` gets a loud 422 rather than a silent ride-along."""
+    model_config = ConfigDict(extra="forbid")
 
 
 def _trim(n: int):
@@ -178,7 +184,7 @@ class NodeRecord(BaseModel):
 
 # ─── API request/response shapes ───────────────────────────────────────────
 
-class InitRequest(BaseModel):
+class InitRequest(_StrictBase):
     viewport_w: Optional[int] = None
     viewport_h: Optional[int] = None
 
@@ -188,7 +194,7 @@ class InitResponse(BaseModel):
     node: NodeRecord
 
 
-class NavigateRequest(BaseModel):
+class NavigateRequest(_StrictBase):
     session_id: str
     parent_node_id: str
     direction: Direction
@@ -203,7 +209,7 @@ class NavigateResponse(BaseModel):
     node: NodeRecord
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(_StrictBase):
     session_id: str
     current_node_id: str
     message: str
