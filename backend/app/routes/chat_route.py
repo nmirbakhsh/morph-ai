@@ -4,9 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from .. import database as db
-from ..llm_engine import (
-    chat_route, generate_adjacent_intents, generate_layout, make_back_intent,
-)
+from ..llm_engine import chat_route, generate_full_node, make_back_intent
 from ..schemas import AdjacentIntents, ChatRequest, ChatResponse
 
 router = APIRouter()
@@ -42,24 +40,19 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
                 x, y = cand
                 break
 
-        layout = await generate_layout(
-            intent_prompt=teleport_intent,
-            mcp_tool=None,
-            mcp_output=None,
-            parent_title=current.title,
-        )
         history_titles = [n.title for n in db.get_session_nodes(req.session_id)]
         # Teleport has no spatial parent direction — give the user a Back
         # signpost on "left" (an arbitrary but consistent slot).
         back_dir = "left"
-        forward = await generate_adjacent_intents(
-            current_layout=layout,
-            current_title=layout.headline,
+        layout, forward = await generate_full_node(
+            intent_prompt=teleport_intent,
+            mcp_tool=None,
+            mcp_output=None,
+            parent_title=current.title,
             history_titles=history_titles,
             back_direction=back_dir,
-            back_target_title=current.title,
-            mcp_tool_executed=None,
-            mcp_output_summary=None,
+            viewport_w=req.viewport_w,
+            viewport_h=req.viewport_h,
         )
         all_intents = list(forward.intents)
         all_intents.append(make_back_intent(

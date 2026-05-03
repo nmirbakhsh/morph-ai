@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from .config import GEMINI_API_KEY, GEMINI_MODEL
 from .schemas import (
-    AdjacentIntents, Direction, IntentSignpost, NodeLayout,
+    AdjacentIntents, Direction, FullNodeOutput, IntentSignpost, NodeLayout,
 )
 from .tool_registry import tool_descriptions_for_prompt
 
@@ -85,22 +85,40 @@ LAYOUT_SCHEMA_TEXT = """
   "theme": "violet | emerald | coral | cerulean | amber | indigo | magenta | warm | neutral",
   "accent_color": "#hex (vibrant, fits theme)",
   "bg_from": "#hex — top-left of the panel gradient",
-  "bg_via":  "#hex — optional middle stop (omit for a 2-stop gradient)",
+  "bg_via":  "#hex — optional middle stop",
   "bg_to":   "#hex — bottom-right of the panel gradient",
+  "bg_image_url": "OPTIONAL — absolute URL from the provided list. If set, this image becomes the panel background (with the gradient as a tinted overlay). Use it instead of an inline image card.",
   "icon": "single emoji",
-  "eyebrow": "small uppercase label, ~3-5 words",
-  "headline": "the room's title — 4-7 words MAX, no period",
-  "headline_accent": "optional sub-tagline 3-6 words; MUST be a NEW phrase, do NOT repeat any words from headline",
-  "body": "optional one-sentence lede (<= 130 chars)",
+  "eyebrow": "<= 32 chars uppercase label",
+  "headline": "<= 56 chars (4-7 words), no period",
+  "headline_accent": "OPTIONAL — <= 44 chars distinct sub-tagline; do NOT repeat any words from headline",
+  "body": "OPTIONAL — <= 130 chars, ONE sentence",
   "components": [
-    /* AT MOST 2 components. Pick the SINGLE most useful one whenever you can. */
-    { "type": "stat_grid", "items": [{"label","value","delta?","trend?":"up|down|flat"}] /* 2-3 items max */ },
-    { "type": "chart", "title", "subtitle?", "hero_value?", "hero_delta?", "series":[float,...] },
-    { "type": "list", "title?", "items":[{"title","subtitle?","value?","icon?":"emoji"}] /* 3-5 items max */ },
-    { "type": "text_block", "title?", "body" /* <= 220 chars */ },
-    { "type": "metric_block", "label", "value", "sublabel?" },
-    { "type": "tag_row", "tags":["..."] /* 3-6 short tags */ },
-    { "type": "image", "src":"absolute URL chosen from the provided list", "alt?", "caption?" /* one short caption */ }
+    /* AT MOST 2 components. Prefer 1. SUMMARIZE ruthlessly to fit caps. */
+    { "type": "stat_grid",   "items":[{"label":"<=18ch","value":"<=12ch","delta?":"<=20ch","trend?":"up|down|flat"}] /* 2-3 items */ },
+    { "type": "chart",       "title":"<=28ch","subtitle?":"<=44ch","hero_value?":"<=14ch","hero_delta?":"<=18ch","series":[float,...] /* 8-24 floats */ },
+    { "type": "list",        "title?":"<=28ch","items":[{"title":"<=32ch","subtitle?":"<=60ch","value?":"<=14ch","icon?":"emoji"}] /* 3-5 items */ },
+    { "type": "text_block",  "title?":"<=28ch","body":"<=220ch" },
+    { "type": "metric_block","label":"<=22ch","value":"<=16ch","sublabel?":"<=30ch" },
+    { "type": "tag_row",     "tags":["<=18ch each"] /* 3-6 tags */ }
+  ]
+}
+""".strip()
+
+
+INTENTS_SCHEMA_TEXT = """
+{
+  "intents": [
+    /* one entry per requested direction. */
+    {
+      "direction": "up | down | left | right",
+      "label":      "<= 16 chars (1-2 words)",
+      "sublabel":   "<= 64 chars one-line tease",
+      "icon":       "single emoji (decorative only)",
+      "intent_prompt": "<= 200 chars concrete prompt for the next room",
+      "mcp_tool":   "qualified MCP tool name OR null",
+      "is_continuation": false  /* true ONLY for a 'continue' direction */
+    }
   ]
 }
 """.strip()
@@ -231,6 +249,195 @@ def _coerce_layout(raw: Dict[str, Any], *, fallback_intent: str) -> NodeLayout:
     except ValidationError as e:
         logger.warning("layout validation failed: %s", e)
         return _stub_layout(fallback_intent)
+
+
+# ─── MERGED Prompt A+B ────────────────────────────────────────────────────
+
+def _form_factor(w: Optional[int], h: Optional[int]) -> Tuple[str, str]:
+    """Return (label, density-guidance text) for a viewport size."""
+    if not w or w <= 0:
+        return "unknown", "Assume a typical laptop screen."
+    if w < 720:
+        return "mobile", (
+            "MOBILE viewport (~" + str(w) + "x" + str(h or "?") + "). "
+            "Use AT MOST 1 component. Keep eyebrow ~3 words, headline 4-5 words, "
+            "body 60-100 chars. stat_grid: 2 items max. list: 3 items max. "
+            "Each label/title near the LOW end of its char cap. No tag_row unless trivial."
+        )
+    if w < 1280:
+        return "laptop", (
+            "LAPTOP viewport (~" + str(w) + "x" + str(h or "?") + "). "
+            "1-2 components is fine. Body 80-130 chars. stat_grid up to 3 items, "
+            "list up to 4. Aim for a balanced, breathable layout."
+        )
+    return "large", (
+        "LARGE monitor (~" + str(w) + "x" + str(h or "?") + "). "
+        "Comfortably fit 2 components. Body up to 130 chars. stat_grid up to 4 "
+        "items, list up to 5. Slightly more decorative phrasing is OK."
+    )
+
+
+async def generate_full_node(
+    *,
+    intent_prompt: str,
+    mcp_tool: Optional[str],
+    mcp_output: Optional[Dict[str, Any]],
+    parent_title: Optional[str] = None,
+    history_titles: Optional[List[str]] = None,
+    back_direction: Optional[Direction] = None,
+    viewport_w: Optional[int] = None,
+    viewport_h: Optional[int] = None,
+) -> Tuple[NodeLayout, AdjacentIntents]:
+    """One Gemini call that returns BOTH the room layout (Prompt B) and the
+    next-direction intents (Prompt A). Saves a round-trip per navigate.
+
+    Falls back to two separate calls if the merged response can't be parsed
+    into FullNodeOutput (rare with strict response_mime_type=application/json,
+    but kept for safety on the long tail)."""
+    raw_payload = ""
+    if mcp_output is not None:
+        raw_payload = json.dumps(mcp_output, default=str)[:5000]
+
+    image_urls = _extract_image_urls(mcp_output) if mcp_output else []
+    image_block = ""
+    if image_urls:
+        image_block = (
+            "\nAvailable image URLs (pick at most one to set as bg_image_url):\n"
+            + "\n".join(f"- {u}" for u in image_urls)
+        )
+
+    needed_dirs: List[Direction] = ["up", "down", "left", "right"]
+    if back_direction:
+        needed_dirs = [d for d in needed_dirs if d != back_direction]
+    needed_str = ", ".join(needed_dirs)
+
+    history_str = " → ".join((history_titles or [])[-6:]) or "(none)"
+    form_label, form_guidance = _form_factor(viewport_w, viewport_h)
+
+    prompt = f"""You design ONE room (a full-bleed panel) in Morph AI AND its
+next-direction intents in ONE response. Be DISCIPLINED — show LITTLE content
+per slide. Each room is one focused beat.
+
+Target viewport: {form_label}
+{form_guidance}
+
+User intent for THIS room:
+"{intent_prompt}"
+
+{"Parent room: " + parent_title if parent_title else ""}
+{"MCP tool executed: " + mcp_tool if mcp_tool else "No MCP tool was run."}
+
+Raw tool output (truncated, may be empty):
+{raw_payload or "(none)"}{image_block}
+
+Recent navigation path: {history_str}
+
+Available MCP tools (for the next-room intents):
+{tool_descriptions_for_prompt()}
+
+Output ONE JSON object with this exact shape, NO fences:
+
+{{
+  "layout": {LAYOUT_SCHEMA_TEXT},
+  "intents": {INTENTS_SCHEMA_TEXT}
+}}
+
+═══════════════════════════════════════════════════════════════════════════
+LAYOUT (the current room) rules:
+- AT MOST 2 components. Prefer 1.
+- ALL text fields have hard char caps (above). SUMMARIZE — do not truncate
+  mid-word. Pick the most evocative phrasing within the cap.
+- headline: 4-7 words, no period.
+- headline_accent: leave null OR a SHORT distinct phrase that does NOT echo
+  the headline.
+- body: <= 130 chars, ONE sentence, optional.
+
+Background:
+- ALWAYS set bg_from + bg_to (and optionally bg_via) to a vibrant deep
+  palette (lightness ~12-32%) that fits the topic emotionally. Each slide
+  must look distinct from neighbours.
+- If image URLs are provided AND a relevant one exists, set bg_image_url
+  to that URL — DO NOT include an inline image component. The image will
+  render as the panel background with your gradient as a tinted overlay.
+- Never invent URLs.
+
+Component selection:
+- Numeric series / trend → chart (8-24 floats, hero_value beats stat cards).
+- 2-3 distinct labelled numbers → stat_grid.
+- One hero number → metric_block.
+- Ranked items / names / dates → list (3-5 items).
+- Prose only when nothing else fits → text_block.
+- Tag_row for short keyword pills.
+
+═══════════════════════════════════════════════════════════════════════════
+INTENTS (the next rooms) rules:
+- Generate intents for these directions ONLY: {needed_str}.
+- Each one must be a meaningfully different next room, GROUNDED in THIS
+  room's content (entities, themes, MCP output) — not generic ideas.
+- label 1-2 words. sublabel < 64 chars.
+- intent_prompt must be specific enough that an LLM can build the next
+  room from it.
+- If a relevant MCP tool fits, set mcp_tool; else null.
+- If THIS room is clearly part 1 of a longer piece, mark EXACTLY ONE
+  direction with is_continuation: true labelled "Continue".
+- Avoid backtracking to recent path entries.
+
+Output JSON only.
+"""
+    raw = await _generate_json(prompt, schema_hint="full_node")
+
+    if not raw or "_stub" in raw or "_error" in raw:
+        # Fall back to the two-stage path
+        return await _two_stage_fallback(
+            intent_prompt=intent_prompt, mcp_tool=mcp_tool, mcp_output=mcp_output,
+            parent_title=parent_title, history_titles=history_titles or [],
+            back_direction=back_direction, needed_dirs=needed_dirs,
+        )
+
+    try:
+        full = FullNodeOutput.model_validate(raw)
+    except ValidationError as e:
+        logger.warning("merged node validation failed, falling back: %s", e)
+        return await _two_stage_fallback(
+            intent_prompt=intent_prompt, mcp_tool=mcp_tool, mcp_output=mcp_output,
+            parent_title=parent_title, history_titles=history_titles or [],
+            back_direction=back_direction, needed_dirs=needed_dirs,
+        )
+
+    # Defensive: ensure intents only cover the requested directions and
+    # backfill any missing ones with stubs.
+    seen: set = set()
+    out_intents: List[IntentSignpost] = []
+    for it in full.intents.intents:
+        if it.direction in seen or it.direction not in needed_dirs:
+            continue
+        seen.add(it.direction)
+        out_intents.append(it)
+    for d in needed_dirs:
+        if d not in seen:
+            out_intents.append(_stub_intent_for(d))
+    return full.layout, AdjacentIntents(intents=out_intents)
+
+
+async def _two_stage_fallback(
+    *, intent_prompt: str, mcp_tool: Optional[str],
+    mcp_output: Optional[Dict[str, Any]],
+    parent_title: Optional[str], history_titles: List[str],
+    back_direction: Optional[Direction], needed_dirs: List[Direction],
+) -> Tuple[NodeLayout, AdjacentIntents]:
+    layout = await generate_layout(
+        intent_prompt=intent_prompt, mcp_tool=mcp_tool,
+        mcp_output=mcp_output, parent_title=parent_title,
+    )
+    intents = await generate_adjacent_intents(
+        current_layout=layout, current_title=layout.headline,
+        history_titles=history_titles, back_direction=back_direction,
+        back_target_title=parent_title,
+        mcp_tool_executed=mcp_tool,
+        mcp_output_summary=(json.dumps(mcp_output, default=str)[:1200]
+                            if mcp_output else None),
+    )
+    return layout, intents
 
 
 def _stub_layout(intent: str) -> NodeLayout:

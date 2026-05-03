@@ -9,11 +9,10 @@ from fastapi import APIRouter, HTTPException
 
 from .. import database as db
 from ..llm_engine import (
-    OPPOSITE, generate_adjacent_intents, generate_layout,
-    make_back_intent, synthesize_mcp_args,
+    OPPOSITE, generate_full_node, make_back_intent, synthesize_mcp_args,
 )
 from ..mcp_client import bridge
-from ..schemas import Direction, NavigateRequest, NavigateResponse
+from ..schemas import AdjacentIntents, Direction, NavigateRequest, NavigateResponse
 
 router = APIRouter()
 
@@ -153,36 +152,22 @@ async def navigate_endpoint(req: NavigateRequest) -> NavigateResponse:
                 stream_key=key,
             )
 
-        if key: await _push(key, "▶ generating layout (Prompt B)…")
-        layout = await generate_layout(
+        if key: await _push(key, "▶ generating room + next intents (merged)…")
+        history_titles = [n.title for n in db.get_session_nodes(parent.session_id)]
+        back_dir: Optional[Direction] = OPPOSITE.get(req.direction)
+
+        layout, forward_intents = await generate_full_node(
             intent_prompt=req.intent_prompt,
             mcp_tool=req.mcp_tool,
             mcp_output=mcp_output,
             parent_title=parent.title,
-        )
-        if key: await _push(key, "✓ layout ready")
-
-        if key: await _push(key, "▶ projecting next intents (Prompt A)…")
-        history_titles = [n.title for n in db.get_session_nodes(parent.session_id)]
-
-        # Reserve the OPPOSITE direction for a synthetic Back signpost
-        # pointing to the parent node — but only when the parent isn't the origin
-        # and the user actually came from somewhere.
-        back_dir: Optional[Direction] = OPPOSITE.get(req.direction)
-
-        mcp_summary: Optional[str] = None
-        if mcp_output is not None:
-            mcp_summary = json.dumps(mcp_output, default=str)[:1200]
-
-        forward_intents = await generate_adjacent_intents(
-            current_layout=layout,
-            current_title=layout.headline,
             history_titles=history_titles,
             back_direction=back_dir,
-            back_target_title=parent.title,
-            mcp_tool_executed=req.mcp_tool,
-            mcp_output_summary=mcp_summary,
+            viewport_w=req.viewport_w,
+            viewport_h=req.viewport_h,
         )
+        if key: await _push(key, "✓ layout + intents ready")
+
         all_intents = list(forward_intents.intents)
         if back_dir:
             all_intents.append(make_back_intent(
@@ -190,9 +175,7 @@ async def navigate_endpoint(req: NavigateRequest) -> NavigateResponse:
                 target_node_id=parent.node_id,
                 parent_title=parent.title,
             ))
-        from ..schemas import AdjacentIntents as _AI
-        intents = _AI(intents=all_intents)
-        if key: await _push(key, "✓ intents ready")
+        intents = AdjacentIntents(intents=all_intents)
 
         node = db.insert_node(
             session_id=parent.session_id,

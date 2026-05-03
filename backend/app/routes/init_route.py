@@ -6,39 +6,38 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Request
 
 from .. import database as db
-from ..llm_engine import generate_adjacent_intents, generate_layout
-from ..schemas import InitResponse, NodeRecord
+from ..llm_engine import generate_full_node
+from ..schemas import InitRequest, InitResponse, NodeRecord
 
 router = APIRouter()
 
 
 @router.get("/init", response_model=InitResponse)
 @router.post("/init", response_model=InitResponse)
-async def init_endpoint(request: Request) -> InitResponse:
+async def init_endpoint(
+    request: Request, body: Optional[InitRequest] = None,
+) -> InitResponse:
     cookie_ctx: Dict[str, Any] = {
         "user_agent": request.headers.get("user-agent", ""),
         "referer": request.headers.get("referer", ""),
     }
     sid = db.create_session(cookie_ctx)
+    vw = body.viewport_w if body else None
+    vh = body.viewport_h if body else None
 
-    layout = await generate_layout(
+    layout, intents = await generate_full_node(
         intent_prompt=(
-            "Welcome the user to Morph AI: a spatial canvas where every room is generated "
-            "from connected MCP servers. Showcase what they can explore — frame it as a curious "
-            "starting point. Pick a warm violet/indigo theme."
+            "Welcome the user to Morph AI: a spatial canvas where every room is "
+            "generated from connected MCP servers. Showcase what they can explore "
+            "— frame it as a curious starting point. Pick a warm violet/indigo theme."
         ),
         mcp_tool=None,
         mcp_output=None,
         parent_title=None,
-    )
-    intents = await generate_adjacent_intents(
-        current_layout=layout,
-        current_title="Welcome",
         history_titles=[],
-        back_direction=None,         # origin — no back
-        back_target_title=None,
-        mcp_tool_executed=None,
-        mcp_output_summary=None,
+        back_direction=None,   # origin — no back signpost
+        viewport_w=vw,
+        viewport_h=vh,
     )
     node = db.insert_node(
         session_id=sid,
