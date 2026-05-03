@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { api } from "../api";
 import { useStore } from "../store";
 import type { Prefs } from "../types";
 
@@ -34,22 +36,74 @@ function Slider({ label, hint, value, onChange, marks }: SliderProps) {
   );
 }
 
+function prefsEqual(a: Prefs, b: Prefs): boolean {
+  return a.complexity === b.complexity
+      && a.density === b.density
+      && a.contrast === b.contrast;
+}
+
 export function SettingsPanel() {
   const open = useStore((s) => s.settingsOpen);
   const toggle = useStore((s) => s.toggleSettings);
   const prefs = useStore((s) => s.prefs);
   const setPref = useStore((s) => s.setPref);
+  const upsertNode = useStore((s) => s.upsertNode);
+  const pruneToCoord = useStore((s) => s.pruneToCoord);
 
-  if (!open) return null;
+  // Snapshot prefs at open-time so we can detect changes on close.
+  const snapshotRef = useRef<Prefs | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  useEffect(() => {
+    if (open && !snapshotRef.current) {
+      snapshotRef.current = { ...prefs };
+    }
+  }, [open, prefs]);
+
+  const closeAndMaybeReload = async () => {
+    const snap = snapshotRef.current;
+    snapshotRef.current = null;
+    toggle();
+
+    if (!snap || prefsEqual(snap, prefs)) return;
+
+    // Prefs changed — regenerate the current node and drop prefetched neighbours.
+    const state = useStore.getState();
+    const [cx, cy] = state.currentCoord;
+    const current = state.nodesByCoord[`${cx},${cy}`];
+    if (!current) return;
+
+    setRegenerating(true);
+    try {
+      const res = await api.regenerate(current.node_id);
+      upsertNode(res.node);
+      pruneToCoord([cx, cy]);
+    } catch (e) {
+      console.error("regenerate failed", e);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  if (!open && !regenerating) return null;
   return (
     <div className="settings-panel" role="dialog" aria-label="Morph AI settings">
       <div className="chat-header">
         <div className="chat-header-icon">⚙</div>
         <div>
           <div className="chat-header-title">Settings</div>
-          <div className="chat-header-sub">Tunes future rooms — current ones stay as-is</div>
+          <div className="chat-header-sub">
+            {regenerating ? "Reloading current room…" : "Close to apply to the current room"}
+          </div>
         </div>
-        <button className="chat-header-close" onClick={toggle} aria-label="Close settings">✕</button>
+        <button
+          className="chat-header-close"
+          onClick={closeAndMaybeReload}
+          aria-label="Close settings"
+          disabled={regenerating}
+        >
+          ✕
+        </button>
       </div>
 
       <div className="settings-body">
@@ -74,6 +128,12 @@ export function SettingsPanel() {
           onChange={(v) => setPref("contrast", v)}
           marks={CONTRAST_LABELS}
         />
+        {regenerating && (
+          <div className="settings-regen-status">
+            <div className="typing-dots"><span /><span /><span /></div>
+            <span>Regenerating current room with new settings…</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -50,8 +50,14 @@ export interface TagRow {
   type: "tag_row";
   tags: string[];
 }
+export interface ImageBlockComp {
+  type: "image";
+  src: string;
+  alt?: string | null;
+  caption?: string | null;
+}
 export type Component =
-  | StatGrid | ChartBlock | ListBlock | TextBlock | MetricBlock | TagRow;
+  | StatGrid | ChartBlock | ListBlock | TextBlock | MetricBlock | TagRow | ImageBlockComp;
 
 export interface IntentSignpost {
   direction: Direction;
@@ -75,7 +81,6 @@ export interface NodeLayout {
   bg_from?: string | null;
   bg_via?: string | null;
   bg_to?: string | null;
-  bg_image_url?: string | null;
   icon: string;
   eyebrow: string;
   headline: string;

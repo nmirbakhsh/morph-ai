@@ -96,6 +96,21 @@ def _row_to_node(row: sqlite3.Row) -> NodeRecord:
     )
 
 
+def update_node_layout(
+    *, node_id: str, title: str, layout: NodeLayout, adjacent_intents: AdjacentIntents,
+) -> Optional[NodeRecord]:
+    """Replace a node's layout + intents in place. Used by /api/regenerate."""
+    with _conn() as c:
+        c.execute(
+            """UPDATE nodes
+               SET title = ?, layout_json = ?, adjacent_json = ?
+             WHERE node_id = ?""",
+            (title, layout.model_dump_json(),
+             adjacent_intents.model_dump_json(), node_id),
+        )
+    return get_node(node_id)
+
+
 def insert_node(
     *,
     session_id: str,

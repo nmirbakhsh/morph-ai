@@ -1,5 +1,6 @@
 import type {
   ChatResponse, Direction, GraphResponse, InitResponse, NavigateResponse,
+  NodeRecord,
 } from "./types";
 import { useStore } from "./store";
 
@@ -51,6 +52,12 @@ export const api = {
 
   graph: (sessionId: string) =>
     jsonFetch<GraphResponse>(`/graph/${sessionId}`),
+
+  regenerate: (nodeId: string) =>
+    jsonFetch<{ node: NodeRecord }>("/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ node_id: nodeId, ...envelope() }),
+    }),
 
   /** Build an EventSource URL for the SSE log stream of an in-flight navigate. */
   streamUrl: (parentId: string, direction: Direction) =>

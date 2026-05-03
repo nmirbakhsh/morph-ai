@@ -150,11 +150,18 @@ class TagRow(BaseModel):
     tags: List[TagText] = Field(..., max_length=6)
 
 
-# NOTE: Inline image component dropped — images are now the panel background
-# via bg_image_url so they don't add vertical height to the layout.
+class ImageBlockComp(BaseModel):
+    """Inline image. Frontend renders it inside a fixed-aspect div with
+    background-size: cover, so any source image fits gracefully without
+    making the slide overflow."""
+    type: Literal["image"] = "image"
+    src: str                                    # absolute URL
+    alt: Optional[SubText] = None
+    caption: Optional[SubText] = None
+
 
 Component = Annotated[
-    Union[StatGrid, ChartBlock, ListBlock, TextBlock, MetricBlock, TagRow],
+    Union[StatGrid, ChartBlock, ListBlock, TextBlock, MetricBlock, TagRow, ImageBlockComp],
     Field(discriminator="type"),
 ]
 
@@ -185,7 +192,6 @@ class NodeLayout(BaseModel):
     bg_from: Optional[str] = None
     bg_via: Optional[str] = None
     bg_to: Optional[str] = None
-    bg_image_url: Optional[str] = None
     icon: IconText = "✦"
     eyebrow: EyebrowText
     headline: HeadlineText
@@ -260,6 +266,20 @@ class ChatRequest(_StrictBase):
     viewport_w: Optional[int] = None
     viewport_h: Optional[int] = None
     prefs: Optional[Prefs] = None
+
+
+class RegenerateRequest(_StrictBase):
+    """Re-run generate_full_node for an existing node, e.g. after the user
+    changes their preferences. Layout + intents are updated in place; the
+    node's id, parent, and coord stay the same so the canvas position holds."""
+    node_id: str
+    viewport_w: Optional[int] = None
+    viewport_h: Optional[int] = None
+    prefs: Optional[Prefs] = None
+
+
+class RegenerateResponse(BaseModel):
+    node: NodeRecord
 
 
 class ChatResponse(BaseModel):

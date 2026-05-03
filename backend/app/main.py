@@ -17,7 +17,7 @@ from .database import init_db
 from .mcp_client import bridge
 from .routes import (
     chat_route, graph_route, health_route, init_route,
-    navigate_route, stream_route,
+    navigate_route, regenerate_route, stream_route,
 )
 
 logging.basicConfig(level=logging.INFO,
@@ -54,6 +54,7 @@ app.include_router(navigate_route.router, prefix="/api")
 app.include_router(stream_route.router, prefix="/api")
 app.include_router(graph_route.router, prefix="/api")
 app.include_router(chat_route.router, prefix="/api")
+app.include_router(regenerate_route.router, prefix="/api")
 
 
 # ─── Static frontend ───────────────────────────────────────────────────

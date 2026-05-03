@@ -58,6 +58,10 @@ interface State {
   // prefetch tracking
   markPrefetching: (key: string) => void;
   unmarkPrefetching: (key: string) => void;
+
+  /** Drop every node except the one at the given coord. Used after a prefs
+   *  change so neighbours regenerate with the new prefs when visited. */
+  pruneToCoord: (coord: [number, number]) => void;
 }
 
 export const useStore = create<State>((set) => ({
@@ -109,6 +113,18 @@ export const useStore = create<State>((set) => ({
       const next = new Set(s.prefetching);
       next.delete(key);
       return { prefetching: next };
+    }),
+
+  pruneToCoord: (coord) =>
+    set((s) => {
+      const k = `${coord[0]},${coord[1]}`;
+      const keep = s.nodesByCoord[k];
+      if (!keep) return {};
+      return {
+        nodesByCoord: { [k]: keep },
+        nodesById: { [keep.node_id]: keep },
+        prefetching: new Set<string>(),
+      };
     }),
 }));
 

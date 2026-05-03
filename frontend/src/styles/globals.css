@@ -237,6 +237,33 @@ button { font-family: inherit; }
 .metric-block-value { font-size: clamp(28px, min(3.6vw, 5vh), 44px); font-weight: 800; color: #fff; letter-spacing: -0.025em; line-height: 1; }
 .metric-block-sub { font-size: clamp(10px, 1vw, 11px); color: rgba(255,255,255,0.45); }
 
+/* ── Image block — fixed aspect, fits whatever the source dimensions are ─ */
+.image-block {
+  width: 100%; max-width: 580px;
+  margin-top: clamp(10px, 1.6vh, 16px);
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+}
+.image-block-fit {
+  width: 100%;
+  /* Fixed aspect — never lets the image push the slide overflow. */
+  aspect-ratio: 16 / 9;
+  /* Cap the height too on tall portrait viewports. */
+  max-height: clamp(140px, 28vh, 280px);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-color: rgba(255,255,255,0.04);
+}
+.image-block-caption {
+  padding: 6px 12px;
+  font-size: clamp(10px, 1vw, 11px);
+  color: rgba(255,255,255,0.55);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-style: italic;
+}
+
 .tag-row { display: flex; gap: 6px; margin-top: clamp(8px, 1.2vh, 12px); flex-wrap: wrap; }
 .tag {
   padding: 3px 9px; border-radius: 999px;
@@ -556,6 +583,14 @@ button { font-family: inherit; }
   border: 2px solid rgba(255,255,255,0.3);
   box-shadow: 0 0 12px rgba(255,255,255,0.25);
   cursor: grab;
+}
+.settings-regen-status {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 12px; color: rgba(255,255,255,0.7);
+  font-family: var(--mono); letter-spacing: 0.02em;
 }
 @media (max-width: 720px) {
   .settings-panel {

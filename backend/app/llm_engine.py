@@ -130,7 +130,6 @@ def _build_layout_schema_text() -> str:
   "bg_from": "#hex — top-left of the panel gradient",
   "bg_via":  "#hex — optional middle stop",
   "bg_to":   "#hex — bottom-right of the panel gradient",
-  "bg_image_url": "OPTIONAL — absolute URL from the provided list. If set, this image becomes the panel background. Use it instead of an inline image card.",
   "icon": "single emoji ({_r('IconText')})",
   "eyebrow": "{_r('EyebrowText')} uppercase label",
   "headline": "{_r('HeadlineText')} (4-7 words), no period",
@@ -143,7 +142,8 @@ def _build_layout_schema_text() -> str:
     {{ "type": "list",        "title?":"{_r('ChartTitle')}","items":[{{"title":"{_r('ListTitle')}","subtitle?":"{_r('SubText')}","value?":"{_r('TinyValue')}","icon?":"emoji"}}] /* 3-5 items */ }},
     {{ "type": "text_block",  "title?":"{_r('ChartTitle')}","body":"{_r('BodyText')}" }},
     {{ "type": "metric_block","label":"{_r('MetricLabel')}","value":"{_r('HeroValue')}","sublabel?":"{_r('MetricSub')}" }},
-    {{ "type": "tag_row",     "tags":["{_r('TagText')} each"] /* 3-6 tags */ }}
+    {{ "type": "tag_row",     "tags":["{_r('TagText')} each"] /* 3-6 tags */ }},
+    {{ "type": "image",       "src":"absolute URL from the provided list","alt?":"{_r('SubText')}","caption?":"{_r('SubText')}" }}
   ]
 }}"""
 
@@ -270,9 +270,11 @@ Background gradient (REQUIRED — do not omit bg_from/bg_to):
     earth    → bg_from "#241608" bg_to "#5a3210"
 
 Component selection guidance:
-- If image URLs are provided, include EXACTLY ONE image component using one
-  of those URLs verbatim — pick the most representative (avoid logos / icons).
-  Never invent URLs or use URLs not in the provided list.
+- If image URLs are provided AND a relevant photo (not a logo/icon) exists,
+  include EXACTLY ONE image component with src set to that URL verbatim.
+  The frontend renders it inside a fixed-aspect tile that crops to fit, so
+  any image works regardless of dimensions. NEVER invent URLs.
+  If you include an image, it counts toward the 2-component limit.
 - If you have numeric/quantitative data that varies (over time, across items,
   trends, distributions), use a `chart` — give it 8-24 plausible series values
   drawn from the source. A chart with a hero_value beats three stat cards.
@@ -350,7 +352,7 @@ async def generate_full_node(
     image_block = ""
     if image_urls:
         image_block = (
-            "\nAvailable image URLs (pick at most one to set as bg_image_url):\n"
+            "\nAvailable image URLs (pick at most one for an inline image component):\n"
             + "\n".join(f"- {u}" for u in image_urls)
         )
 
@@ -584,6 +586,7 @@ def _layout_summary(layout: NodeLayout) -> str:
             parts.append(f"tags: {', '.join(c.tags[:8])}")
         elif t == "image":
             parts.append(f"image: {(c.caption or c.alt or 'figure')[:80]}")
+        # else: unknown — ignore
     return " | ".join(parts)[:1400]
 
 
