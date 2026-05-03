@@ -98,6 +98,12 @@ export interface NodeRecord {
   created_at: string;
 }
 
+export interface Prefs {
+  complexity: number; // 1..5
+  density: number;    // 1..5
+  contrast: number;   // 1..5
+}
+
 export interface InitResponse { session_id: string; node: NodeRecord; }
 export interface NavigateResponse { node: NodeRecord; }
 export interface ChatResponse {

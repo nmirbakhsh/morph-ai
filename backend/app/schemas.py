@@ -4,9 +4,11 @@ Pydantic schemas — the contract between LLM, backend, and frontend.
 Two LLM stages produce typed JSON:
 - Prompt A → AdjacentIntents  (4 next-room signposts)
 - Prompt B → NodeLayout       (full panel UI for the current room)
-"""
-from __future__ import annotations
 
+NOTE: we deliberately do NOT use `from __future__ import annotations` here.
+Pydantic v2's BeforeValidator closures (e.g. inside `_bounded_str`) need to
+resolve at class-definition time — string-deferred annotations break that.
+"""
 from typing import Annotated, List, Literal, Optional, Union
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
@@ -17,38 +19,71 @@ class _StrictBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _trim(n: int):
-    """Annotated[str, _trim(N)] — trim oversized strings to N chars rather
-    than rejecting them. The LLM still gets a hard cap in the prompt but
-    near-miss outputs no longer kill the whole layout."""
-    def _do(v):
+def _bounded_str(min_len: int, max_len: int):
+    """A bounded-length str type with proper Pydantic min_length/max_length
+    constraints AND a BeforeValidator that gracefully trims oversize input
+    rather than rejecting (the LLM frequently overshoots by a few chars and
+    the user shouldn't see a stub layout because of it).
+
+    Undersize still hard-fails so we don't ship empty/1-char text — the
+    fallback path will retry as two-stage."""
+    def _trim(v):
         if v is None:
             return v
-        if isinstance(v, str) and len(v) > n:
-            return v[:n].rstrip()
+        if isinstance(v, str) and len(v) > max_len:
+            return v[:max_len].rstrip()
         return v
-    return BeforeValidator(_do)
+    return Annotated[
+        str,
+        BeforeValidator(_trim),
+        Field(min_length=min_len, max_length=max_len),
+    ]
 
 
-ShortLabel    = Annotated[str, _trim(18)]   # stat label, list value, tag
-TinyValue     = Annotated[str, _trim(14)]   # stat value, list value
-ListTitle     = Annotated[str, _trim(32)]   # list item title, list block title
-SubText       = Annotated[str, _trim(60)]   # list subtitle, intent sublabel
-ChartTitle    = Annotated[str, _trim(28)]
-ChartSub      = Annotated[str, _trim(44)]
-HeroValue     = Annotated[str, _trim(16)]
-DeltaText     = Annotated[str, _trim(20)]
-EyebrowText   = Annotated[str, _trim(32)]
-HeadlineText  = Annotated[str, _trim(64)]
-HeadlineSub   = Annotated[str, _trim(56)]
-BodyText      = Annotated[str, _trim(180)]   # generous: can hold ~2 short lines
-MetricLabel   = Annotated[str, _trim(22)]
-MetricSub     = Annotated[str, _trim(34)]
-TagText       = Annotated[str, _trim(18)]
-IntentLabel   = Annotated[str, _trim(18)]
-IntentSub     = Annotated[str, _trim(70)]
-IntentPrompt  = Annotated[str, _trim(220)]
-IconText      = Annotated[str, _trim(4)]
+# (min, max) per role. min = LLM "must be at least this substantial".
+# max = hard cap (auto-trimmed). LIMITS dict mirrors them so the prompt
+# can show the LLM the same numbers it'll be validated against.
+LIMITS: dict[str, tuple[int, int]] = {
+    "ShortLabel":   (2, 18),
+    "TinyValue":    (1, 14),
+    "ListTitle":    (3, 32),
+    "SubText":      (0, 60),
+    "ChartTitle":   (3, 28),
+    "ChartSub":     (0, 44),
+    "HeroValue":    (1, 16),
+    "DeltaText":    (0, 20),
+    "EyebrowText":  (3, 32),
+    "HeadlineText": (8, 64),
+    "HeadlineSub":  (0, 56),
+    "BodyText":     (0, 180),
+    "MetricLabel":  (2, 22),
+    "MetricSub":    (0, 34),
+    "TagText":      (1, 18),
+    "IntentLabel":  (2, 18),
+    "IntentSub":    (2, 70),
+    "IntentPrompt": (8, 220),
+    "IconText":     (1, 4),
+}
+
+ShortLabel    = _bounded_str(*LIMITS["ShortLabel"])
+TinyValue     = _bounded_str(*LIMITS["TinyValue"])
+ListTitle     = _bounded_str(*LIMITS["ListTitle"])
+SubText       = _bounded_str(*LIMITS["SubText"])
+ChartTitle    = _bounded_str(*LIMITS["ChartTitle"])
+ChartSub      = _bounded_str(*LIMITS["ChartSub"])
+HeroValue     = _bounded_str(*LIMITS["HeroValue"])
+DeltaText     = _bounded_str(*LIMITS["DeltaText"])
+EyebrowText   = _bounded_str(*LIMITS["EyebrowText"])
+HeadlineText  = _bounded_str(*LIMITS["HeadlineText"])
+HeadlineSub   = _bounded_str(*LIMITS["HeadlineSub"])
+BodyText      = _bounded_str(*LIMITS["BodyText"])
+MetricLabel   = _bounded_str(*LIMITS["MetricLabel"])
+MetricSub     = _bounded_str(*LIMITS["MetricSub"])
+TagText       = _bounded_str(*LIMITS["TagText"])
+IntentLabel   = _bounded_str(*LIMITS["IntentLabel"])
+IntentSub     = _bounded_str(*LIMITS["IntentSub"])
+IntentPrompt  = _bounded_str(*LIMITS["IntentPrompt"])
+IconText      = _bounded_str(*LIMITS["IconText"])
 
 
 Direction = Literal["up", "down", "left", "right"]
@@ -100,7 +135,7 @@ class ListBlock(BaseModel):
 class TextBlock(BaseModel):
     type: Literal["text_block"] = "text_block"
     title: Optional[ChartTitle] = None
-    body: Annotated[str, _trim(220)]
+    body: BodyText
 
 
 class MetricBlock(BaseModel):
@@ -184,9 +219,17 @@ class NodeRecord(BaseModel):
 
 # ─── API request/response shapes ───────────────────────────────────────────
 
+class Prefs(_StrictBase):
+    """User-tunable generation preferences from the settings popup."""
+    complexity: int = Field(default=3, ge=1, le=5)   # 1=ELI5, 5=expert
+    density: int    = Field(default=3, ge=1, le=5)   # 1=spartan, 5=info-dense
+    contrast: int   = Field(default=3, ge=1, le=5)   # 1=subtle, 5=sharp
+
+
 class InitRequest(_StrictBase):
     viewport_w: Optional[int] = None
     viewport_h: Optional[int] = None
+    prefs: Optional[Prefs] = None
 
 
 class InitResponse(BaseModel):
@@ -203,6 +246,7 @@ class NavigateRequest(_StrictBase):
     prefetch: bool = False  # if true, suppress the SSE log stream
     viewport_w: Optional[int] = None
     viewport_h: Optional[int] = None
+    prefs: Optional[Prefs] = None
 
 
 class NavigateResponse(BaseModel):
@@ -215,6 +259,7 @@ class ChatRequest(_StrictBase):
     message: str
     viewport_w: Optional[int] = None
     viewport_h: Optional[int] = None
+    prefs: Optional[Prefs] = None
 
 
 class ChatResponse(BaseModel):

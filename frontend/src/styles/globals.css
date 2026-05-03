@@ -500,6 +500,69 @@ button { font-family: inherit; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes dot-bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
 
+/* ── Settings panel (glass, mirrors chat panel) ─────────────────── */
+.settings-panel {
+  position: fixed;
+  top: calc(var(--topbar-h) + 12px); right: 16px;
+  width: 340px; max-height: calc(100vh - var(--topbar-h) - 32px);
+  z-index: 950;
+  display: flex; flex-direction: column;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 22px;
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.12) inset;
+  overflow: hidden;
+}
+.settings-body {
+  padding: 14px 18px 18px;
+  display: flex; flex-direction: column; gap: 18px;
+  overflow-y: auto;
+}
+.settings-row { display: flex; flex-direction: column; gap: 6px; }
+.settings-row-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.settings-row-label {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.92);
+  letter-spacing: -0.01em;
+}
+.settings-row-value {
+  font-size: 11px; font-family: var(--mono);
+  color: rgba(255,255,255,0.55); letter-spacing: 0.04em;
+}
+.settings-row-hint {
+  font-size: 11px; color: rgba(255,255,255,0.4);
+  font-family: var(--mono); letter-spacing: 0.02em;
+}
+.settings-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.16);
+  outline: none; cursor: pointer;
+}
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(255,255,255,0.3);
+  box-shadow: 0 0 12px rgba(255,255,255,0.25);
+  cursor: grab;
+}
+.settings-slider::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(255,255,255,0.3);
+  box-shadow: 0 0 12px rgba(255,255,255,0.25);
+  cursor: grab;
+}
+@media (max-width: 720px) {
+  .settings-panel {
+    top: calc(var(--topbar-h) + 8px); right: 8px; left: 8px; width: auto;
+  }
+}
+
 /* ── Archive macro view ───────────────────────────────────────────── */
 .archive-overlay {
   position: fixed; inset: 0; z-index: 1200;

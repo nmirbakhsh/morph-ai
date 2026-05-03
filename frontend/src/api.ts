@@ -1,14 +1,16 @@
 import type {
   ChatResponse, Direction, GraphResponse, InitResponse, NavigateResponse,
 } from "./types";
+import { useStore } from "./store";
 
 const BASE = "/api";
 
-/** Viewport hint — used by the backend to tune content density per device. */
-function viewport() {
+function envelope() {
+  const prefs = useStore.getState().prefs;
   return {
     viewport_w: typeof window !== "undefined" ? window.innerWidth : null,
     viewport_h: typeof window !== "undefined" ? window.innerHeight : null,
+    prefs,
   };
 }
 
@@ -25,7 +27,7 @@ export const api = {
   init: () =>
     jsonFetch<InitResponse>("/init", {
       method: "POST",
-      body: JSON.stringify(viewport()),
+      body: JSON.stringify(envelope()),
     }),
 
   navigate: (req: {
@@ -38,13 +40,13 @@ export const api = {
   }) =>
     jsonFetch<NavigateResponse>("/navigate", {
       method: "POST",
-      body: JSON.stringify({ ...req, ...viewport() }),
+      body: JSON.stringify({ ...req, ...envelope() }),
     }),
 
   chat: (req: { session_id: string; current_node_id: string; message: string }) =>
     jsonFetch<ChatResponse>("/chat", {
       method: "POST",
-      body: JSON.stringify({ ...req, ...viewport() }),
+      body: JSON.stringify({ ...req, ...envelope() }),
     }),
 
   graph: (sessionId: string) =>

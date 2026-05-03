@@ -53,6 +53,7 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
             back_direction=back_dir,
             viewport_w=req.viewport_w,
             viewport_h=req.viewport_h,
+            prefs=req.prefs,
         )
         all_intents = list(forward.intents)
         all_intents.append(make_back_intent(

@@ -20,9 +20,52 @@ from pydantic import ValidationError
 
 from .config import GEMINI_API_KEY, GEMINI_MODEL
 from .schemas import (
-    AdjacentIntents, Direction, FullNodeOutput, IntentSignpost, NodeLayout,
+    AdjacentIntents, Direction, FullNodeOutput, IntentSignpost, LIMITS,
+    NodeLayout, Prefs,
 )
 from .tool_registry import tool_descriptions_for_prompt
+
+
+def _r(role: str) -> str:
+    """Render the (min, max) pair for a role as a compact prompt hint."""
+    lo, hi = LIMITS[role]
+    if lo == 0:
+        return f"<= {hi} chars"
+    return f"{lo}-{hi} chars"
+
+
+_COMPLEXITY = {
+    1: "ELI5 — assume zero background. Use everyday words, concrete metaphors.",
+    2: "Casual — light explanation, accessible to a curious newcomer.",
+    3: "Balanced — informed reader, no heavy jargon.",
+    4: "Technical — domain reader, real terminology, no hand-holding.",
+    5: "Expert — research-level precision, dense terminology fine.",
+}
+_DENSITY = {
+    1: "Very sparse: prefer 1 component, body 40-70 chars, minimal facts.",
+    2: "Sparse: 1 component, body 60-100 chars.",
+    3: "Balanced: 1-2 components, body 80-130 chars.",
+    4: "Dense: 2 components, longer body, list up to 5 items.",
+    5: "Very dense: 2 components packed; max items / longest text allowed.",
+}
+_CONTRAST = {
+    1: "Subtle palette: muted, low saturation; gentle gradient stops.",
+    2: "Soft palette: medium saturation, smooth gradient.",
+    3: "Balanced palette: vibrant but harmonious.",
+    4: "Bold palette: high saturation, dramatic gradient sweep.",
+    5: "Sharp palette: extreme contrast between bg_from and bg_to (e.g. deep navy → magenta).",
+}
+
+
+def _prefs_block(prefs: Optional[Prefs]) -> str:
+    if prefs is None:
+        return ""
+    return (
+        f"\nUser preferences (apply strictly):\n"
+        f"- Complexity {prefs.complexity}/5: {_COMPLEXITY[prefs.complexity]}\n"
+        f"- Density    {prefs.density}/5:    {_DENSITY[prefs.density]}\n"
+        f"- Contrast   {prefs.contrast}/5:   {_CONTRAST[prefs.contrast]}"
+    )
 
 
 OPPOSITE: Dict[str, Direction] = {
@@ -80,48 +123,51 @@ async def _generate_json(prompt: str, *, schema_hint: str) -> Dict[str, Any]:
 
 # ─── Prompt B: UI layout ──────────────────────────────────────────────────
 
-LAYOUT_SCHEMA_TEXT = """
-{
+def _build_layout_schema_text() -> str:
+    return f"""{{
   "theme": "violet | emerald | coral | cerulean | amber | indigo | magenta | warm | neutral",
   "accent_color": "#hex (vibrant, fits theme)",
   "bg_from": "#hex — top-left of the panel gradient",
   "bg_via":  "#hex — optional middle stop",
   "bg_to":   "#hex — bottom-right of the panel gradient",
-  "bg_image_url": "OPTIONAL — absolute URL from the provided list. If set, this image becomes the panel background (with the gradient as a tinted overlay). Use it instead of an inline image card.",
-  "icon": "single emoji",
-  "eyebrow": "<= 32 chars uppercase label",
-  "headline": "<= 56 chars (4-7 words), no period",
-  "headline_accent": "OPTIONAL — <= 44 chars distinct sub-tagline; do NOT repeat any words from headline",
-  "body": "OPTIONAL — <= 130 chars, ONE sentence",
+  "bg_image_url": "OPTIONAL — absolute URL from the provided list. If set, this image becomes the panel background. Use it instead of an inline image card.",
+  "icon": "single emoji ({_r('IconText')})",
+  "eyebrow": "{_r('EyebrowText')} uppercase label",
+  "headline": "{_r('HeadlineText')} (4-7 words), no period",
+  "headline_accent": "OPTIONAL — {_r('HeadlineSub')} distinct sub-tagline; do NOT repeat any words from headline",
+  "body": "OPTIONAL — {_r('BodyText')}, ONE sentence",
   "components": [
-    /* AT MOST 2 components. Prefer 1. SUMMARIZE ruthlessly to fit caps. */
-    { "type": "stat_grid",   "items":[{"label":"<=18ch","value":"<=12ch","delta?":"<=20ch","trend?":"up|down|flat"}] /* 2-3 items */ },
-    { "type": "chart",       "title":"<=28ch","subtitle?":"<=44ch","hero_value?":"<=14ch","hero_delta?":"<=18ch","series":[float,...] /* 8-24 floats */ },
-    { "type": "list",        "title?":"<=28ch","items":[{"title":"<=32ch","subtitle?":"<=60ch","value?":"<=14ch","icon?":"emoji"}] /* 3-5 items */ },
-    { "type": "text_block",  "title?":"<=28ch","body":"<=220ch" },
-    { "type": "metric_block","label":"<=22ch","value":"<=16ch","sublabel?":"<=30ch" },
-    { "type": "tag_row",     "tags":["<=18ch each"] /* 3-6 tags */ }
+    /* AT MOST 2. Prefer 1. SUMMARIZE ruthlessly to fit caps. */
+    {{ "type": "stat_grid",   "items":[{{"label":"{_r('ShortLabel')}","value":"{_r('TinyValue')}","delta?":"{_r('DeltaText')}","trend?":"up|down|flat"}}] /* 2-3 items */ }},
+    {{ "type": "chart",       "title":"{_r('ChartTitle')}","subtitle?":"{_r('ChartSub')}","hero_value?":"{_r('HeroValue')}","hero_delta?":"{_r('DeltaText')}","series":[float,...] /* 8-24 floats */ }},
+    {{ "type": "list",        "title?":"{_r('ChartTitle')}","items":[{{"title":"{_r('ListTitle')}","subtitle?":"{_r('SubText')}","value?":"{_r('TinyValue')}","icon?":"emoji"}}] /* 3-5 items */ }},
+    {{ "type": "text_block",  "title?":"{_r('ChartTitle')}","body":"{_r('BodyText')}" }},
+    {{ "type": "metric_block","label":"{_r('MetricLabel')}","value":"{_r('HeroValue')}","sublabel?":"{_r('MetricSub')}" }},
+    {{ "type": "tag_row",     "tags":["{_r('TagText')} each"] /* 3-6 tags */ }}
   ]
-}
-""".strip()
+}}"""
 
 
-INTENTS_SCHEMA_TEXT = """
-{
+def _build_intents_schema_text() -> str:
+    return f"""{{
   "intents": [
     /* one entry per requested direction. */
-    {
+    {{
       "direction": "up | down | left | right",
-      "label":      "<= 16 chars (1-2 words)",
-      "sublabel":   "<= 64 chars one-line tease",
+      "label":      "{_r('IntentLabel')} (1-2 words)",
+      "sublabel":   "{_r('IntentSub')} one-line tease",
       "icon":       "single emoji (decorative only)",
-      "intent_prompt": "<= 200 chars concrete prompt for the next room",
+      "intent_prompt": "{_r('IntentPrompt')} concrete prompt for the next room",
       "mcp_tool":   "qualified MCP tool name OR null",
       "is_continuation": false  /* true ONLY for a 'continue' direction */
-    }
+    }}
   ]
-}
-""".strip()
+}}"""
+
+
+# Lazy globals so other code can still import them by name.
+LAYOUT_SCHEMA_TEXT = _build_layout_schema_text()
+INTENTS_SCHEMA_TEXT = _build_intents_schema_text()
 
 
 def _extract_image_urls(mcp_output: Dict[str, Any], max_n: int = 6) -> List[str]:
@@ -287,6 +333,8 @@ async def generate_full_node(
     back_direction: Optional[Direction] = None,
     viewport_w: Optional[int] = None,
     viewport_h: Optional[int] = None,
+    prefer_continuation_direction: Optional[Direction] = None,
+    prefs: Optional[Prefs] = None,
 ) -> Tuple[NodeLayout, AdjacentIntents]:
     """One Gemini call that returns BOTH the room layout (Prompt B) and the
     next-direction intents (Prompt A). Saves a round-trip per navigate.
@@ -313,13 +361,25 @@ async def generate_full_node(
 
     history_str = " → ".join((history_titles or [])[-6:]) or "(none)"
     form_label, form_guidance = _form_factor(viewport_w, viewport_h)
+    prefs_block = _prefs_block(prefs)
+
+    sticky_continue_block = ""
+    if prefer_continuation_direction:
+        sticky_continue_block = (
+            f'\nSTICKY CONTINUE: the user reached this room by sliding '
+            f'"{prefer_continuation_direction}" to continue a topic. If THIS '
+            f'room would also benefit from a continuation, place is_continuation:true '
+            f'on direction "{prefer_continuation_direction}" so the user can keep '
+            f'sliding {prefer_continuation_direction} to read more. Do NOT put '
+            f'is_continuation on a different direction.'
+        )
 
     prompt = f"""You design ONE room (a full-bleed panel) in Morph AI AND its
 next-direction intents in ONE response. Be DISCIPLINED — show LITTLE content
 per slide. Each room is one focused beat.
 
 Target viewport: {form_label}
-{form_guidance}
+{form_guidance}{prefs_block}
 
 User intent for THIS room:
 "{intent_prompt}"
@@ -330,7 +390,7 @@ User intent for THIS room:
 Raw tool output (truncated, may be empty):
 {raw_payload or "(none)"}{image_block}
 
-Recent navigation path: {history_str}
+Recent navigation path: {history_str}{sticky_continue_block}
 
 Available MCP tools (for the next-room intents):
 {tool_descriptions_for_prompt()}
@@ -416,6 +476,31 @@ Output JSON only.
     for d in needed_dirs:
         if d not in seen:
             out_intents.append(_stub_intent_for(d))
+
+    # Sticky-continue post-process: if the user just slid in direction D to
+    # continue a topic, any continuation in this node MUST live on D too.
+    if prefer_continuation_direction and prefer_continuation_direction in needed_dirs:
+        cont_idx = next(
+            (i for i, it in enumerate(out_intents) if it.is_continuation), None,
+        )
+        target_idx = next(
+            (i for i, it in enumerate(out_intents)
+             if it.direction == prefer_continuation_direction), None,
+        )
+        if cont_idx is not None and target_idx is not None and cont_idx != target_idx:
+            cont_intent = out_intents[cont_idx]
+            target_intent = out_intents[target_idx]
+            # Move the continuation content onto the preferred direction; demote
+            # whatever was there to non-continuation in the other slot.
+            cont_intent_swapped = cont_intent.model_copy(
+                update={"direction": prefer_continuation_direction},
+            )
+            target_intent_swapped = target_intent.model_copy(
+                update={"direction": cont_intent.direction, "is_continuation": False},
+            )
+            out_intents[target_idx] = cont_intent_swapped
+            out_intents[cont_idx] = target_intent_swapped
+
     return full.layout, AdjacentIntents(intents=out_intents)
 
 

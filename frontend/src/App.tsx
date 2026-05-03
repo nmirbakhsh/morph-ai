@@ -3,6 +3,7 @@ import { api } from "./api";
 import { ArchiveMacroView } from "./components/ArchiveMacroView";
 import { ChatPanel } from "./components/ChatPanel";
 import { IntentSignposts } from "./components/IntentSignposts";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { SpatialCanvas } from "./components/SpatialCanvas";
 import { Terminal } from "./components/Terminal";
 import { TopBar } from "./components/TopBar";
@@ -240,6 +241,7 @@ export default function App() {
       {pending && <Terminal logs={pending.logs} />}
 
       <ChatPanel />
+      <SettingsPanel />
       <ArchiveMacroView />
 
       <div className="coord-readout">

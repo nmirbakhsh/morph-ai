@@ -24,6 +24,7 @@ async def init_endpoint(
     sid = db.create_session(cookie_ctx)
     vw = body.viewport_w if body else None
     vh = body.viewport_h if body else None
+    prefs = body.prefs if body else None
 
     layout, intents = await generate_full_node(
         intent_prompt=(
@@ -38,6 +39,7 @@ async def init_endpoint(
         back_direction=None,   # origin — no back signpost
         viewport_w=vw,
         viewport_h=vh,
+        prefs=prefs,
     )
     node = db.insert_node(
         session_id=sid,

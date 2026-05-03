@@ -156,6 +156,16 @@ async def navigate_endpoint(req: NavigateRequest) -> NavigateResponse:
         history_titles = [n.title for n in db.get_session_nodes(parent.session_id)]
         back_dir: Optional[Direction] = OPPOSITE.get(req.direction)
 
+        # Sticky continue: if the parent's intent in this direction was a
+        # continuation, keep continuations on the same direction here too.
+        parent_intent = next(
+            (i for i in parent.adjacent_intents.intents if i.direction == req.direction),
+            None,
+        )
+        prefer_cont_dir: Optional[Direction] = (
+            req.direction if (parent_intent and parent_intent.is_continuation) else None
+        )
+
         layout, forward_intents = await generate_full_node(
             intent_prompt=req.intent_prompt,
             mcp_tool=req.mcp_tool,
@@ -165,6 +175,8 @@ async def navigate_endpoint(req: NavigateRequest) -> NavigateResponse:
             back_direction=back_dir,
             viewport_w=req.viewport_w,
             viewport_h=req.viewport_h,
+            prefer_continuation_direction=prefer_cont_dir,
+            prefs=req.prefs,
         )
         if key: await _push(key, "✓ layout + intents ready")
 

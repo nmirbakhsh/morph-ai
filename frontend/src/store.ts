@@ -1,5 +1,26 @@
 import { create } from "zustand";
-import type { Direction, NodeRecord } from "./types";
+import type { Direction, NodeRecord, Prefs } from "./types";
+
+const DEFAULT_PREFS: Prefs = { complexity: 3, density: 3, contrast: 3 };
+
+const PREFS_KEY = "morph_prefs";
+function loadPrefs(): Prefs {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const raw = window.localStorage.getItem(PREFS_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const parsed = JSON.parse(raw);
+    return {
+      complexity: clampPref(parsed.complexity),
+      density: clampPref(parsed.density),
+      contrast: clampPref(parsed.contrast),
+    };
+  } catch { return DEFAULT_PREFS; }
+}
+function clampPref(n: unknown): number {
+  const v = typeof n === "number" ? n : 3;
+  return Math.max(1, Math.min(5, Math.round(v)));
+}
 
 interface PendingNav {
   parentId: string;
@@ -14,6 +35,8 @@ interface State {
   currentCoord: [number, number];
   archiveOpen: boolean;
   chatOpen: boolean;
+  settingsOpen: boolean;
+  prefs: Prefs;
   pending: PendingNav | null;
   /** Coords currently being prefetched (avoid duplicate calls). */
   prefetching: Set<string>;
@@ -24,6 +47,8 @@ interface State {
   setCurrentCoord: (c: [number, number]) => void;
   toggleArchive: () => void;
   toggleChat: () => void;
+  toggleSettings: () => void;
+  setPref: (key: keyof Prefs, value: number) => void;
 
   // pending navigation (drives the cinematic terminal)
   startPending: (parentId: string, direction: Direction) => void;
@@ -42,6 +67,8 @@ export const useStore = create<State>((set) => ({
   currentCoord: [0, 0],
   archiveOpen: false,
   chatOpen: false,
+  settingsOpen: false,
+  prefs: loadPrefs(),
   pending: null,
   prefetching: new Set<string>(),
 
@@ -57,6 +84,13 @@ export const useStore = create<State>((set) => ({
 
   toggleArchive: () => set((s) => ({ archiveOpen: !s.archiveOpen })),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+  setPref: (key, value) =>
+    set((s) => {
+      const next = { ...s.prefs, [key]: clampPref(value) };
+      try { window.localStorage.setItem(PREFS_KEY, JSON.stringify(next)); } catch {}
+      return { prefs: next };
+    }),
 
   startPending: (parentId, direction) =>
     set({ pending: { parentId, direction, logs: [] } }),
