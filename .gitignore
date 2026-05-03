@@ -8,6 +8,10 @@ backend/.venv/
 backend/data/
 frontend/node_modules/
 frontend/dist/
+frontend/**/*.tsbuildinfo
+# Stale compiled artifacts from a previous repo layout — TS sources are .tsx now.
+frontend/src/**/*.js
+wikipedia-venv/
 .DS_Store
 ._*
 *.pyc

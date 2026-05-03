@@ -23,6 +23,70 @@ _DIR_DELTAS: Dict[str, tuple[int, int]] = {
 }
 
 
+import re
+
+import logging
+_log = logging.getLogger("morph.chain")
+
+
+async def _maybe_chain_fetch(
+    *, tool_name: Optional[str], first_output: Optional[Dict[str, Any]],
+    stream_key: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """If the first call was wikipedia:search and returned page ids, fetch the
+    top result so its HTML (with <img> tags) feeds Prompt B."""
+    if not first_output or tool_name != "wikipedia:search":
+        return first_output
+    if first_output.get("isError"):
+        _log.info("chain skip: first_output isError")
+        return first_output
+    # MCP wraps the search result as a JSON-string inside content[0].text.
+    page_id: Optional[int] = None
+    for item in first_output.get("content", []) or []:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = item.get("text") or ""
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        seq = data if isinstance(data, list) else [data]
+        for entry in seq:
+            if isinstance(entry, dict) and "id" in entry:
+                try:
+                    page_id = int(entry["id"])
+                    break
+                except (TypeError, ValueError):
+                    pass
+        if page_id is not None:
+            break
+    if page_id is None:
+        _log.info("chain skip: no page id in search result")
+        return first_output
+    _log.info("chain: fetching page id %s", page_id)
+    try:
+        if stream_key:
+            await _push(stream_key, f"▶ fetching page id {page_id} for richer content")
+        # Wikipedia MCP fetch requires both id AND language (no default).
+        fetched = await bridge.call_tool(
+            "wikipedia:fetch", {"id": page_id, "language": "en"},
+        )
+        merged = {
+            "isError": False,
+            "content": list(first_output.get("content", []))
+                       + list((fetched or {}).get("content", [])),
+        }
+        merged_len = sum(len(json.dumps(c)) for c in merged["content"])
+        _log.info("chain: merged content size %d (was %d)", merged_len,
+                  len(json.dumps(first_output.get("content", []))))
+        if stream_key: await _push(stream_key, "✓ fetched")
+        return merged
+    except Exception as e:  # noqa: BLE001
+        _log.warning("chain fetch failed: %s", e)
+        if stream_key: await _push(stream_key, f"✗ fetch chain failed: {e}")
+        return first_output
+
+
 # Track in-flight navigate jobs so /api/stream/{node_id} can subscribe to logs.
 # Maps a parent_node_id+direction key to an asyncio.Queue of log lines.
 _streams: Dict[str, asyncio.Queue[str]] = {}
@@ -79,6 +143,15 @@ async def navigate_endpoint(req: NavigateRequest) -> NavigateResponse:
                 if key: await _push(key, "✓ tool returned")
             except Exception as e:  # noqa: BLE001
                 if key: await _push(key, f"✗ tool error: {e}")
+
+            # Image enrichment: when search returned results that include a
+            # page id, also fetch the page so HTML <img> tags become available
+            # to Prompt B. Wikipedia-specific helper, no-op otherwise.
+            mcp_output = await _maybe_chain_fetch(
+                tool_name=req.mcp_tool,
+                first_output=mcp_output,
+                stream_key=key,
+            )
 
         if key: await _push(key, "▶ generating layout (Prompt B)…")
         layout = await generate_layout(

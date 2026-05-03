@@ -70,11 +70,18 @@ class MetricBlock(BaseModel):
 
 class TagRow(BaseModel):
     type: Literal["tag_row"] = "tag_row"
-    tags: List[str] = Field(..., max_length=10)
+    tags: List[str] = Field(..., max_length=8)
+
+
+class ImageBlockComp(BaseModel):
+    type: Literal["image"] = "image"
+    src: str                         # absolute URL
+    alt: Optional[str] = None        # accessibility text
+    caption: Optional[str] = None    # short caption shown below
 
 
 Component = Annotated[
-    Union[StatGrid, ChartBlock, ListBlock, TextBlock, MetricBlock, TagRow],
+    Union[StatGrid, ChartBlock, ListBlock, TextBlock, MetricBlock, TagRow, ImageBlockComp],
     Field(discriminator="type"),
 ]
 
@@ -107,9 +114,9 @@ class NodeLayout(BaseModel):
     icon: str = "✦"                  # large emoji for the room
     eyebrow: str
     headline: str
-    headline_accent: Optional[str] = None  # emphasized portion (italic/colored)
+    headline_accent: Optional[str] = None  # short tagline rendered as a sub-headline
     body: Optional[str] = None
-    components: List[Component] = Field(default_factory=list, max_length=4)
+    components: List[Component] = Field(default_factory=list, max_length=2)
 
 
 # ─── Persisted node (DB row → API response) ────────────────────────────────

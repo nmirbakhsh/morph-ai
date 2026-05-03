@@ -7,8 +7,15 @@ mcp_servers:
   # into an isolated env on first launch.
   - name: wikipedia
     transport: stdio
-    command: uvx
-    args: ["--from", "wikipedia-mcp-server", "wikipedia-mcp"]
+    # Wrapped wikipedia-mcp-server that injects a User-Agent (Wikipedia 403s
+    # without one). Runs in its own Python 3.13 venv because the upstream
+    # package requires py>=3.13 while the backend uses py3.12.
+    # Bootstrap once on the host:
+    #   uv venv --python 3.13 wikipedia-venv
+    #   wikipedia-venv/bin/python -m ensurepip
+    #   wikipedia-venv/bin/python -m pip install wikipedia-mcp-server
+    command: /root/morph-ai/wikipedia-venv/bin/python
+    args: ["/root/morph-ai/wikipedia_mcp_wrapper.py"]
     description: "Search and retrieve Wikipedia articles"
     enabled: true
 

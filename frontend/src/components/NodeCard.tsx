@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import type { NodeRecord } from "../types";
 import { ChartView } from "./panels/ChartView";
+import { ImageBlockView } from "./panels/ImageBlockView";
 import { ListView } from "./panels/ListView";
 import { MetricBlockView } from "./panels/MetricBlockView";
 import { StatGridView } from "./panels/StatGridView";
@@ -34,16 +35,16 @@ export function NodeCard({ node, isCurrent }: Props) {
       >
         <div className="panel-icon">{layout.icon}</div>
         <div className="eyebrow">{layout.eyebrow}</div>
-        <h1 className="headline">
-          {layout.headline}
-          {layout.headline_accent && (
-            <>
-              <br />
-              <em style={{ color: accent }}>{layout.headline_accent}</em>
-            </>
+        <h1 className="headline">{layout.headline}</h1>
+        {layout.headline_accent &&
+          // Skip if the LLM accidentally echoed the headline.
+          !layout.headline.toLowerCase().includes(layout.headline_accent.toLowerCase()) &&
+          layout.headline_accent.toLowerCase() !== layout.headline.toLowerCase() && (
+            <p className="headline-sub" style={{ color: accent }}>
+              {layout.headline_accent}
+            </p>
           )}
-        </h1>
-        {layout.body && <p className="body-lg" style={{ marginTop: 18 }}>{layout.body}</p>}
+        {layout.body && <p className="body-lg">{layout.body}</p>}
 
         {layout.components.map((c, i) => {
           switch (c.type) {
@@ -53,6 +54,7 @@ export function NodeCard({ node, isCurrent }: Props) {
             case "text_block":  return <TextBlockView  key={i} block={c} />;
             case "metric_block":return <MetricBlockView key={i} block={c} accent={accent} />;
             case "tag_row":     return <TagRowView     key={i} block={c} />;
+            case "image":       return <ImageBlockView key={i} block={c} />;
             default: return null;
           }
         })}

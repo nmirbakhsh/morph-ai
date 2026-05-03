@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
@@ -84,21 +85,60 @@ LAYOUT_SCHEMA_TEXT = """
   "theme": "violet | emerald | coral | cerulean | amber | indigo | magenta | warm | neutral",
   "accent_color": "#hex (vibrant, fits theme)",
   "icon": "single emoji",
-  "eyebrow": "small uppercase label, ~3-6 words",
-  "headline": "bold one-liner (~3-9 words)",
-  "headline_accent": "optional emphasized sub-phrase that recolours",
-  "body": "optional 1-2 sentence intro (<= 180 chars)",
+  "eyebrow": "small uppercase label, ~3-5 words",
+  "headline": "the room's title — 4-7 words MAX, no period",
+  "headline_accent": "optional sub-tagline 3-6 words; MUST be a NEW phrase, do NOT repeat any words from headline",
+  "body": "optional one-sentence lede (<= 130 chars)",
   "components": [
-    /* up to 4 of these. Mix freely. */
-    { "type": "stat_grid", "items": [{"label","value","delta?","trend?":"up|down|flat"}] },
+    /* AT MOST 2 components. Pick the SINGLE most useful one whenever you can. */
+    { "type": "stat_grid", "items": [{"label","value","delta?","trend?":"up|down|flat"}] /* 2-3 items max */ },
     { "type": "chart", "title", "subtitle?", "hero_value?", "hero_delta?", "series":[float,...] },
-    { "type": "list", "title?", "items":[{"title","subtitle?","value?","icon?":"emoji"}] },
-    { "type": "text_block", "title?", "body" },
+    { "type": "list", "title?", "items":[{"title","subtitle?","value?","icon?":"emoji"}] /* 3-5 items max */ },
+    { "type": "text_block", "title?", "body" /* <= 220 chars */ },
     { "type": "metric_block", "label", "value", "sublabel?" },
-    { "type": "tag_row", "tags":["..."] }
+    { "type": "tag_row", "tags":["..."] /* 3-6 short tags */ },
+    { "type": "image", "src":"absolute URL chosen from the provided list", "alt?", "caption?" /* one short caption */ }
   ]
 }
 """.strip()
+
+
+def _extract_image_urls(mcp_output: Dict[str, Any], max_n: int = 6) -> List[str]:
+    """Scan MCP output text for usable image URLs (handles Wikipedia HTML)."""
+    if not mcp_output:
+        return []
+    text = ""
+    for item in mcp_output.get("content", []) or []:
+        if isinstance(item, dict):
+            for k in ("text", "data"):
+                v = item.get(k)
+                if isinstance(v, str):
+                    text += v + "\n"
+    if not text:
+        return []
+    found: List[str] = []
+    for m in re.finditer(r'<img[^>]+src=["\']([^"\']+)["\']', text, flags=re.IGNORECASE):
+        u = m.group(1)
+        if u.startswith("//"):
+            u = "https:" + u
+        elif u.startswith("/"):
+            u = "https://en.wikipedia.org" + u
+        elif not u.startswith("http"):
+            continue
+        # Skip Wikipedia chrome/icon assets
+        low = u.lower()
+        if any(s in low for s in ("/static/images/", "magnify", "ambox", "edit-icon",
+                                   "commons-logo", "wiktionary", "wikiquote",
+                                   "wikidata", "wikinews", "puzzle", "mediaviewer-icon")):
+            continue
+        # Prefer larger thumbs (Wikipedia rasters end in /<n>px-…)
+        if re.search(r"/\d+px-", low):
+            pass  # keep
+        if u not in found:
+            found.append(u)
+        if len(found) >= max_n:
+            break
+    return found
 
 
 async def generate_layout(
@@ -111,11 +151,19 @@ async def generate_layout(
     """Prompt B — turn raw MCP output (or pure intent) into a NodeLayout."""
     raw_payload = ""
     if mcp_output is not None:
-        raw_payload = json.dumps(mcp_output, default=str)[:6000]
+        raw_payload = json.dumps(mcp_output, default=str)[:5000]
 
-    prompt = f"""You design a single full-bleed panel ("room") in a spatial-canvas app called Morph AI.
-The room must feel rich, beautiful, consumer-grade — vibrant gradients, expressive typography,
-emojis welcome. Pick a theme + accent that fits the topic.
+    image_urls = _extract_image_urls(mcp_output) if mcp_output else []
+    image_block = ""
+    if image_urls:
+        image_block = (
+            "\nAvailable image URLs you may use (pick 0 or 1 for an image component):\n"
+            + "\n".join(f"- {u}" for u in image_urls)
+        )
+
+    prompt = f"""You design a single full-bleed panel ("room") in Morph AI.
+Be DISCIPLINED — show LITTLE content per slide. The user navigates between rooms,
+so each room is one focused beat, not a dashboard.
 
 User intent for this room:
 "{intent_prompt}"
@@ -124,18 +172,34 @@ User intent for this room:
 {"MCP tool executed: " + mcp_tool if mcp_tool else "No MCP tool was run."}
 
 Raw tool output (truncated, may be empty):
-{raw_payload or "(none)"}
+{raw_payload or "(none)"}{image_block}
 
-Translate the data + intent into ONE JSON object with this shape (no extra text, no fences):
+Output ONE JSON object, no fences, matching this exact shape:
 
 {LAYOUT_SCHEMA_TEXT}
 
-Constraints:
-- Output must be valid JSON parseable by json.loads.
-- 1 to 4 components total. Vary types when sensible.
-- Numbers in chart.series must be plain floats, ~6-32 of them.
-- Keep eyebrow + headline punchy. Consumer voice (warm, confident, no jargon).
-- If no real data, invent plausible illustrative content — never apologize, never say "no data".
+Hard rules:
+- Valid JSON parseable by json.loads.
+- AT MOST 2 components. Prefer 1 if a single component conveys the idea.
+- headline: 4-7 words, no period.
+- headline_accent: leave null OR write a SHORT distinct phrase (3-6 words) that
+  does NOT repeat any word from headline. NEVER echo the headline.
+- body: <= 130 chars, ONE sentence, optional.
+- Pick a vivid theme + accent_color that matches the topic emotionally.
+
+Component selection guidance:
+- If image URLs are provided, include EXACTLY ONE image component using one
+  of those URLs verbatim — pick the most representative (avoid logos / icons).
+  Never invent URLs or use URLs not in the provided list.
+- If you have numeric/quantitative data that varies (over time, across items,
+  trends, distributions), use a `chart` — give it 8-24 plausible series values
+  drawn from the source. A chart with a hero_value beats three stat cards.
+- Use `stat_grid` for 2-3 distinct labeled numbers that DON'T form a series.
+- Use `metric_block` for one hero number with a label.
+- Use `list` for ranked items, names, dates, or short bullet titles.
+- Use `text_block` ONLY when prose really is the best representation.
+
+If no real data, invent plausible illustrative content — never apologize, never say "no data".
 """
     raw = await _generate_json(prompt, schema_hint="layout")
     return _coerce_layout(raw, fallback_intent=intent_prompt)
@@ -208,6 +272,8 @@ def _layout_summary(layout: NodeLayout) -> str:
             parts.append(f"metric: {c.label}={c.value}")
         elif t == "tag_row":
             parts.append(f"tags: {', '.join(c.tags[:8])}")
+        elif t == "image":
+            parts.append(f"image: {(c.caption or c.alt or 'figure')[:80]}")
     return " | ".join(parts)[:1400]
 
 
