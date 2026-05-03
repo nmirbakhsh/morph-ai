@@ -56,14 +56,17 @@ button { font-family: inherit; }
 }
 
 /* ── Top bar ──────────────────────────────────────────────────────────── */
-/* z-index higher than .signpost (850) so the topbar always tops the up-rail. */
+/* Sits above all rails. Solid-ish glass so it reads as a single bar on top. */
 .topbar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 950;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 960;
+  height: var(--topbar-h);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 22px;
-  pointer-events: none;
+  padding: 0 18px;
+  background: rgba(10,10,20,0.55);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-.topbar > * { pointer-events: auto; }
 .logo-text {
   font-size: 18px; font-weight: 800; color: #fff;
   letter-spacing: -0.03em;
@@ -116,11 +119,11 @@ button { font-family: inherit; }
   min-height: 100%;
   display: flex; flex-direction: column;
   align-items: flex-start; justify-content: center;
-  /* top: rail + topbar buffer; sides: rail + breathing room. */
-  padding: calc(var(--rail-thick) + 64px)
-           calc(var(--rail-thick) + 36px)
-           calc(var(--rail-thick) + 36px)
-           calc(var(--rail-thick) + 36px);
+  /* All four sides reserve at minimum the rail thickness + breathing room. */
+  padding: calc(var(--topbar-h) + var(--rail-thick) + 24px)
+           calc(var(--rail-thick) + 28px)
+           calc(var(--rail-thick) + 24px)
+           calc(var(--rail-thick) + 28px);
   max-width: 1100px;
   margin: 0 auto;
   gap: 0;
@@ -233,35 +236,41 @@ button { font-family: inherit; }
 
 /* ── Direction rails (glassy edge rectangles) ─────────────────────────── */
 :root {
-  --rail-thick: 76px;       /* desktop edge thickness */
-  --rail-thick-mobile: 56px;
+  --rail-thick: 76px;
+  --rail-thick-mobile: 48px;
+  --topbar-h: 48px;
 }
 .signpost {
   position: fixed; z-index: 850;
   cursor: pointer;
   user-select: none;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.1);
+  /* Tinted glass — needs enough alpha to read as a rectangle on light bg too. */
+  background: rgba(10,10,20,0.42);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgba(255,255,255,0.12);
   color: #fff;
-  transition: background 0.25s, transform 0.25s;
+  transition: background 0.2s;
   overflow: hidden;
+  /* Force a stacking context so backdrop-filter renders on iOS Safari. */
+  transform: translateZ(0);
 }
-.signpost:hover { background: rgba(255,255,255,0.1); }
+.signpost:hover,
+.signpost:active { background: rgba(20,20,40,0.55); }
 
 .signpost.up,
 .signpost.down {
   left: 0; right: 0;
   height: var(--rail-thick);
 }
-.signpost.up    { top: 0; border-top: none; border-left: none; border-right: none; }
+/* Up rail begins below the topbar so they never overlap. */
+.signpost.up    { top: var(--topbar-h); border-top: none; border-left: none; border-right: none; }
 .signpost.down  { bottom: 0; border-bottom: none; border-left: none; border-right: none; }
 
 .signpost.left,
 .signpost.right {
-  top: 0; bottom: 0;
+  top: var(--topbar-h); bottom: 0;
   width: var(--rail-thick);
 }
 .signpost.left  { left: 0; border-left: none; border-top: none; border-bottom: none; }
@@ -545,45 +554,72 @@ button { font-family: inherit; }
 
 /* ── Mobile responsive ──────────────────────────────────────── */
 @media (max-width: 720px) {
-  :root { --rail-thick: var(--rail-thick-mobile); }
+  :root {
+    --rail-thick: var(--rail-thick-mobile);
+    --topbar-h: 44px;
+  }
 
-  .topbar { padding: 12px 14px; }
+  .topbar { padding: 0 12px; }
   .topbar .panel-label { display: none; }
-  .pill-btn, #chat-toggle { font-size: 11px; padding: 5px 11px; }
-  .logo-text { font-size: 15px; }
+  .pill-btn, #chat-toggle { font-size: 11px; padding: 5px 10px; }
+  .logo-text { font-size: 14px; }
 
   .panel-inner {
-    padding: calc(var(--rail-thick) + 76px) 24px calc(var(--rail-thick) + 24px) 24px;
+    /* Slightly less side breathing room than desktop, but still beyond rail. */
+    padding: calc(var(--topbar-h) + var(--rail-thick) + 14px)
+             calc(var(--rail-thick) + 14px)
+             calc(var(--rail-thick) + 14px)
+             calc(var(--rail-thick) + 14px);
     align-items: stretch;
   }
 
-  .headline { font-size: clamp(22px, 6vw, 32px); max-width: 100%; }
-  .headline-sub { font-size: clamp(14px, 4vw, 18px); }
+  .headline { font-size: clamp(20px, 5.6vw, 28px); max-width: 100%; line-height: 1.1; }
+  .headline-sub { font-size: clamp(13px, 3.6vw, 17px); }
   .body-lg { font-size: 13px; max-width: 100%; }
+  .panel-icon { font-size: 22px; margin-bottom: 4px; }
+  .eyebrow { font-size: 9px; margin-bottom: 8px; }
 
-  .stat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat-card { padding: 12px; }
-  .stat-value { font-size: 20px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .stat-card { padding: 10px 12px; border-radius: 12px; }
+  .stat-value { font-size: 18px; }
+  .stat-label { font-size: 10px; margin-bottom: 4px; }
 
-  .chart-wrap, .list-wrap, .text-block, .image-block { max-width: 100%; }
-  .image-block img { max-height: 220px; }
+  .chart-wrap, .list-wrap, .text-block, .image-block, .metric-block { max-width: 100%; }
+  .image-block img { max-height: 200px; }
+  .metric-block-value { font-size: 32px; }
 
+  /* Tighten side rails: just the icon + tiny label, sublabel hidden. */
   .signpost.left .signpost-text,
-  .signpost.right .signpost-text { max-width: 44px; }
+  .signpost.right .signpost-text { max-width: 40px; }
   .signpost.left .signpost-label,
-  .signpost.right .signpost-label { font-size: 10px; max-width: 44px; }
+  .signpost.right .signpost-label { font-size: 10px; max-width: 40px; }
   .signpost.left .signpost-sub,
-  .signpost.right .signpost-sub { display: none; }
+  .signpost.right .signpost-sub,
   .signpost.up .signpost-sub,
   .signpost.down .signpost-sub { display: none; }
+  .signpost-icon { width: 24px; height: 24px; font-size: 12px; }
   .signpost.up .signpost-body,
   .signpost.down .signpost-body { padding: 0 12px; gap: 8px; }
 
   .chat-panel {
-    bottom: calc(var(--rail-thick) + 12px);
-    right: 12px; left: 12px; width: auto;
+    bottom: calc(var(--rail-thick) + 10px);
+    right: 10px; left: 10px; width: auto;
     max-height: 60vh;
   }
 
   .coord-readout { display: none; }
+}
+
+/* Very narrow (notches) — even tighter */
+@media (max-width: 380px) {
+  :root { --rail-thick: 40px; }
+  .panel-inner {
+    padding: calc(var(--topbar-h) + var(--rail-thick) + 10px)
+             calc(var(--rail-thick) + 10px)
+             calc(var(--rail-thick) + 10px)
+             calc(var(--rail-thick) + 10px);
+  }
+  .stat-grid { grid-template-columns: 1fr; }
+  .signpost.left .signpost-text,
+  .signpost.right .signpost-text { display: none; }  /* icon only */
 }
